@@ -1,64 +1,21 @@
-/*******************************************************************************
- *
- *  File:          LMIC-node.cpp
- * 
- *  Function:      LMIC-node main application file.
- * 
- *  Copyright:     Copyright (c) 2021 Leonel Lopes Parente
- *                 Copyright (c) 2018 Terry Moore, MCCI
- *                 Copyright (c) 2015 Thomas Telkamp and Matthijs Kooijman
- *
- *                 Permission is hereby granted, free of charge, to anyone 
- *                 obtaining a copy of this document and accompanying files to do, 
- *                 whatever they want with them without any restriction, including,
- *                 but not limited to, copying, modification and redistribution.
- *                 The above copyright notice and this permission notice shall be 
- *                 included in all copies or substantial portions of the Software.
- * 
- *                 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT ANY WARRANTY.
- * 
- *  License:       MIT License. See accompanying LICENSE file.
- * 
- *  Author:        Leonel Lopes Parente
- * 
- *  Description:   To get LMIC-node up and running no changes need to be made
- *                 to any source code. Only configuration is required
- *                 in platform-io.ini and lorawan-keys.h.
- * 
- *                 If you want to modify the code e.g. to add your own sensors,
- *                 that can be done in the two area's that start with
- *                 USER CODE BEGIN and end with USER CODE END. There's no need
- *                 to change code in other locations (unless you have a reason).
- *                 See README.md for documentation and how to use LMIC-node.
- * 
- *                 LMIC-node uses the concepts from the original ttn-otaa.ino 
- *                 and ttn-abp.ino examples provided with the LMIC libraries.
- *                 LMIC-node combines both OTAA and ABP support in a single example,
- *                 supports multiple LMIC libraries, contains several improvements
- *                 and enhancements like display support, support for downlinks,
- *                 separates LoRaWAN keys from source code into a separate keyfile,
- *                 provides formatted output to serial port and display
- *                 and supports many popular development boards out of the box.
- *                 To get a working node up and running only requires some configuration.
- *                 No programming or customization of source code required.
- * 
- *  Dependencies:  External libraries:
- *                 MCCI LoRaWAN LMIC library  https://github.com/mcci-catena/arduino-lmic
- *                 IBM LMIC framework         https://github.com/matthijskooijman/arduino-lmic  
- *                 U8g2                       https://github.com/olikraus/u8g2
- *                 EasyLed                    https://github.com/lnlp/EasyLed
- *
- ******************************************************************************/
-
 #include "LMIC-node.h"
-
 
 //  █ █ █▀▀ █▀▀ █▀▄   █▀▀ █▀█ █▀▄ █▀▀   █▀▄ █▀▀ █▀▀ ▀█▀ █▀█
 //  █ █ ▀▀█ █▀▀ █▀▄   █   █ █ █ █ █▀▀   █▀▄ █▀▀ █ █  █  █ █
 //  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀   ▀▀▀ ▀▀▀ ▀▀  ▀▀▀   ▀▀  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀
 
+// * Custom code 
 
-const uint8_t payloadBufferLength = 4;    // Adjust to fit max payload length
+#include <SPI.h>
+#include <ESP32SPISlave.h>
+
+ESP32SPISlave slave;
+
+static constexpr uint32_t BUFFER_SIZE {8};
+uint8_t spi_slave_tx_buf[BUFFER_SIZE];
+uint8_t spi_slave_rx_buf[BUFFER_SIZE];
+
+const uint8_t payloadBufferLength = 128;    // Adjust to fit max payload length
 
 
 //  █ █ █▀▀ █▀▀ █▀▄   █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄
@@ -70,7 +27,6 @@ uint8_t payloadBuffer[payloadBufferLength];
 static osjob_t doWorkJob;
 uint32_t doWorkIntervalSeconds = DO_WORK_INTERVAL_SECONDS;  // Change value in platformio.ini
 
-// Note: LoRa module pin mappings are defined in the Board Support Files.
 
 // Set LoRaWAN keys defined in lorawan-keys.h.
 #ifdef OTAA_ACTIVATION
@@ -92,6 +48,14 @@ uint32_t doWorkIntervalSeconds = DO_WORK_INTERVAL_SECONDS;  // Change value in p
     void os_getDevKey (u1_t* buf) { }
 #endif
 
+// * Custom code 
+
+void printHex(uint8_t num) {
+  char hexCar[2];
+
+  sprintf(hexCar, "%02X", num);
+  Serial.print(hexCar);
+}
 
 int16_t getSnrTenfold()
 {
@@ -691,22 +655,6 @@ lmic_tx_error_t scheduleUplink(uint8_t fPort, uint8_t* data, uint8_t dataLength,
 //  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀   ▀▀▀ ▀▀▀ ▀▀  ▀▀▀   ▀▀  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀
 
 
-static volatile uint16_t counter_ = 0;
-
-uint16_t getCounterValue()
-{
-    // Increments counter and returns the new value.
-    delay(50);         // Fake this takes some time
-    return ++counter_;
-}
-
-void resetCounter()
-{
-    // Reset counter to 0
-    counter_ = 0;
-}
-
-
 void processWork(ostime_t doWorkJobTimeStamp)
 {
     // This function is called from the doWorkCallback() 
@@ -722,30 +670,12 @@ void processWork(ostime_t doWorkJobTimeStamp)
     if (LMIC.devaddr != 0)
     {
         // Collect input data.
-        // For simplicity LMIC-node uses a counter to simulate a sensor. 
-        // The counter is increased automatically by getCounterValue()
-        // and can be reset with a 'reset counter' command downlink message.
 
-        uint16_t counterValue = getCounterValue();
         ostime_t timestamp = os_getTime();
 
-        #ifdef USE_DISPLAY
-            // Interval and Counter values are combined on a single row.
-            // This allows to keep the 3rd row empty which makes the
-            // information better readable on the small display.
-            display.clearLine(INTERVAL_ROW);
-            display.setCursor(COL_0, INTERVAL_ROW);
-            display.print("I:");
-            display.print(doWorkIntervalSeconds);
-            display.print("s");        
-            display.print(" Ctr:");
-            display.print(counterValue);
-        #endif
         #ifdef USE_SERIAL
             printEvent(timestamp, "Input data collected", PrintTarget::Serial);
             printSpaces(serial, MESSAGE_INDENT);
-            serial.print(F("COUNTER value: "));
-            serial.println(counterValue);
         #endif    
 
         // For simplicity LMIC-node will try to send an uplink
@@ -764,13 +694,30 @@ void processWork(ostime_t doWorkJobTimeStamp)
         }
         else
         {
-            // Prepare uplink payload.
-            uint8_t fPort = 10;
-            payloadBuffer[0] = counterValue >> 8;
-            payloadBuffer[1] = counterValue & 0xFF;
-            uint8_t payloadLength = 2;
+            // * Custom code - move peripheral wait code to the start of processWork in order to test without having TTN active session
 
-            scheduleUplink(fPort, payloadBuffer, payloadLength);
+            // Device is joined to network and ready to start transmitting, but first need to receive data from esp32 controller
+
+			// TODO: this receives data fine but not yet tested sending the current unformatted data to TTN. it should just send 
+            // TODO: the spi_slave_rx_buf which is decoded in TTN, but it may need converting to hex beforehand?
+			slave.wait(spi_slave_rx_buf, spi_slave_tx_buf, BUFFER_SIZE);
+
+			while (slave.available()) {
+				// show received data
+				for (size_t i = 0; i < BUFFER_SIZE; ++i) {
+					// printf("%d ", spi_slave_rx_buf[i]);
+					printHex(spi_slave_rx_buf[i]);
+				}
+
+				printf("\n");
+				
+				slave.pop();
+			}
+
+			printf("%d ", spi_slave_rx_buf);
+			
+			uint8_t fPort = 10;
+			scheduleUplink(fPort, spi_slave_rx_buf, BUFFER_SIZE);
         }
     }
 }    
@@ -795,7 +742,9 @@ void processDownlink(ostime_t txCompleteTimestamp, uint8_t fPort, uint8_t* data,
             serial.println(F("Reset cmd received"));
         #endif
         ostime_t timestamp = os_getTime();
-        resetCounter();
+
+        // * Do something with downlonk message resetCmd - this was used to reset the counted in the lmic-node example
+
         printEvent(timestamp, "Counter reset", PrintTarget::All, false);
     }          
 }
@@ -839,15 +788,22 @@ void setup()
         abort();
     }
 
-    initLmic();
+    // * Custom code 
+    initLmic(1, DR_SF12, 18);
+    // initLmic(); <- default
 
 //  █ █ █▀▀ █▀▀ █▀▄   █▀▀ █▀█ █▀▄ █▀▀   █▀▄ █▀▀ █▀▀ ▀█▀ █▀█
 //  █ █ ▀▀█ █▀▀ █▀▄   █   █ █ █ █ █▀▀   █▀▄ █▀▀ █ █  █  █ █
 //  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀   ▀▀▀ ▀▀▀ ▀▀  ▀▀▀   ▀▀  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀
 
-    // Place code for initializing sensors etc. here.
+    // * Custom code 
 
-    resetCounter();
+	// Init slave connection to the master ESP32 sending us GPS data
+	slave.setDataMode(SPI_MODE0);
+	slave.begin(HSPI);
+	// clear buffers
+	memset(spi_slave_tx_buf, 0, BUFFER_SIZE);
+	memset(spi_slave_rx_buf, 0, BUFFER_SIZE);
 
 //  █ █ █▀▀ █▀▀ █▀▄   █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄
 //  █ █ ▀▀█ █▀▀ █▀▄   █   █ █ █ █ █▀▀   █▀▀ █ █ █ █
