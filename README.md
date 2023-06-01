@@ -2,6 +2,12 @@
 
 Program for loading on to an ESP32 for transmitting telemetry data from a high altitude balloon payload to The Things Network over LoRaWAN.
 
+## Related repos
+
+- [HAB API](https://github.com/jaygould/hab-api)
+- [HAB React Native app](https://github.com/jaygould/hab-app)
+- [HAB LoRa point to point transmitter](https://github.com/jaygould/hab-lora-transmitter)
+
 ## Related repos/posts
 
 - Main HAB LoRa transmitter for non-LoRaWAN (point to point) [can be found here](https://github.com/jaygould/hab-lora-transmitter)
