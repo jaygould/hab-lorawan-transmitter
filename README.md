@@ -2,6 +2,11 @@
 
 Program for loading on to an ESP32 for transmitting telemetry data from a high altitude balloon payload to The Things Network over LoRaWAN.
 
+## Related repos/posts
+
+- Main HAB LoRa transmitter for non-LoRaWAN (point to point) [can be found here](https://github.com/jaygould/hab-lora-transmitter)
+- Add blog posts...
+
 ## Components
 
 Uses an ESP32 microcontroller with various components wired in to transmit telemetry data to The Things Network using LoRa radio. Components include:
